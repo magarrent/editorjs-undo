@@ -131,7 +131,7 @@ export class EditorUndoManager {
     }
 
     public canUndo(): boolean {
-        return this.position > 0;
+        return this.position > 0 && this.history.length > 1;
     }
 
     public canRedo(): boolean {
@@ -247,25 +247,47 @@ export class EditorUndoManager {
             return;
         }
 
-        const textNode = blockContent.firstChild;
-        if (!textNode) {
-            return;
-        }
-
         const selection = window.getSelection();
         if (!selection) {
             return;
         }
 
         const range = document.createRange();
-        const offset = Math.min(item.caretOffset, textNode.textContent?.length ?? 0);
+        const walker = document.createTreeWalker(blockContent, NodeFilter.SHOW_TEXT, null);
 
-        range.setStart(textNode, offset);
-        range.collapse(true);
+        let remainingOffset = item.caretOffset;
+        let targetNode: Node | null = null;
+        let targetOffset = 0;
 
-        this.editor.caret.setToBlock(item.caretBlockIndex, 'end');
-        selection.removeAllRanges();
-        selection.addRange(range);
+        while (walker.nextNode()) {
+            const currentNode = walker.currentNode;
+            const textLength = currentNode.textContent?.length ?? 0;
+
+            if (remainingOffset <= textLength) {
+                targetNode = currentNode;
+                targetOffset = Math.max(0, Math.min(remainingOffset, textLength));
+                break;
+            }
+
+            remainingOffset -= textLength;
+        }
+
+        if (!targetNode) {
+            // Fall back to placing the caret at the end of the block if we could not find a suitable text node
+            this.editor.caret.setToBlock(item.caretBlockIndex, 'end');
+            return;
+        }
+
+        try {
+            range.setStart(targetNode, targetOffset);
+            range.collapse(true);
+
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } catch (error) {
+            console.warn('Failed to restore caret exactly, falling back to block end', error);
+            this.editor.caret.setToBlock(item.caretBlockIndex, 'end');
+        }
     }
 
     private hasChanged(blocks: EditorJS.OutputBlockData[]): boolean {
@@ -395,6 +417,10 @@ export class EditorUndoManager {
         }
 
         return input.map((definition) => definition);
+    }
+
+    private log(): void {
+        // Logging disabled for production
     }
 }
 
