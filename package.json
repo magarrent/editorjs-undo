@@ -1,0 +1,46 @@
+{
+    "name": "@docuwriter/editorjs-undo",
+    "version": "0.1.0",
+    "description": "DocuWriter.ai maintained undo/redo plugin for Editor.js with caret restoration and configurable shortcuts.",
+    "main": "dist/index.js",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js",
+            "default": "./dist/index.mjs"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsup",
+        "dev": "tsup --watch",
+        "lint": "tsc --noEmit",
+        "test": "vitest"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/DocuWriterAI/editorjs-undo"
+    },
+    "keywords": [
+        "editorjs",
+        "undo",
+        "redo",
+        "history",
+        "docuwriter"
+    ],
+    "author": "DocuWriter.ai",
+    "license": "MIT",
+    "devDependencies": {
+        "@editorjs/editorjs": "^2.29.1",
+        "@types/node": "^22.7.4",
+        "tsup": "^8.1.0",
+        "typescript": "^5.6.3",
+        "vitest": "^1.6.0"
+    }
+}
