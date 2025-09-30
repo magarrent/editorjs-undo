@@ -59,7 +59,8 @@ export class EditorUndoManager {
     private readonly history: HistoryItem[] = [];
     private position = -1;
     private isSaving = false;
-    private readonly debouncedSaver: () => Promise<void>;
+    private isRestoring = false;
+    private readonly debouncedSaver: (() => Promise<void>) & { cancel: () => void };
     private pendingSave = false;
 
     public constructor(editor: EditorJS, config: UndoConfig = {}) {
@@ -165,8 +166,16 @@ export class EditorUndoManager {
     };
 
     private async captureSnapshot(): Promise<void> {
+        // Skip capturing snapshots during undo/redo operations
+        if (this.isRestoring) {
+            return;
+        }
+
         this.isSaving = true;
         try {
+            if(!this.editor.isReady) {
+                return;
+            }
             const output = await this.editor.save();
             const caret = this.getCaretPosition();
 
@@ -186,8 +195,24 @@ export class EditorUndoManager {
     }
 
     private async restore(item: HistoryItem): Promise<void> {
-        await this.editor.render({ blocks: this.cloneBlocks(item.blocks) });
-        this.restoreCaret(item);
+        if(!this.editor.isReady) {
+            return;
+        }
+        
+        // Cancel any pending debounced saves
+        this.debouncedSaver.cancel();
+        this.pendingSave = false;
+        
+        this.isRestoring = true;
+        try {
+            await this.editor.render({ blocks: this.cloneBlocks(item.blocks) });
+            this.restoreCaret(item);
+            
+            // Add a small delay before allowing new snapshots to prevent race conditions
+            await new Promise(resolve => setTimeout(resolve, 50));
+        } finally {
+            this.isRestoring = false;
+        }
     }
 
     private getCaretPosition(): { blockIndex: number | null; offset: number | null } {
@@ -367,10 +392,10 @@ export class EditorUndoManager {
         return event.key.toLowerCase() === key;
     }
 
-    private debounce<T extends (...args: unknown[]) => unknown>(fn: T, wait: number): (...funcArgs: Parameters<T>) => Promise<void> {
+    private debounce<T extends (...args: unknown[]) => unknown>(fn: T, wait: number): ((...funcArgs: Parameters<T>) => Promise<void>) & { cancel: () => void } {
         let timeout: ReturnType<typeof setTimeout> | null = null;
 
-        return async (...args: Parameters<T>) => {
+        const debouncedFn = async (...args: Parameters<T>) => {
             if (timeout) {
                 clearTimeout(timeout);
             }
@@ -383,6 +408,15 @@ export class EditorUndoManager {
                 }, wait);
             });
         };
+
+        const cancel = () => {
+            if (timeout) {
+                clearTimeout(timeout);
+                timeout = null;
+            }
+        };
+
+        return Object.assign(debouncedFn, { cancel });
     }
 
     private extractBlocks(initialData: EditorJS.OutputData | EditorJS.OutputBlockData[] | { blocks?: EditorJS.OutputBlockData[] }): EditorJS.OutputBlockData[] {
